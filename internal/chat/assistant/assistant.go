@@ -2,15 +2,12 @@ package assistant
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"log/slog"
-	"os"
 	"strings"
 	"time"
 
 	"github.com/acai-travel/tech-challenge/internal/chat/model"
-	ics "github.com/arran4/golang-ical"
 	"github.com/openai/openai-go/v2"
 )
 
@@ -161,51 +158,7 @@ func (a *Assistant) Reply(ctx context.Context, conv *model.Conversation) (string
 				case "get_today_date":
 					msgs = append(msgs, openai.ToolMessage(time.Now().Format(time.RFC3339), call.ID))
 				case "get_holidays":
-					link := "https://www.officeholidays.com/ics/spain/catalonia"
-					if v := os.Getenv("HOLIDAY_CALENDAR_LINK"); v != "" {
-						link = v
-					}
-
-					events, err := LoadCalendar(ctx, link)
-					if err != nil {
-						msgs = append(msgs, openai.ToolMessage("failed to load holiday events", call.ID))
-						break
-					}
-
-					var payload struct {
-						BeforeDate time.Time `json:"before_date,omitempty"`
-						AfterDate  time.Time `json:"after_date,omitempty"`
-						MaxCount   int       `json:"max_count,omitempty"`
-					}
-
-					if err := json.Unmarshal([]byte(call.Function.Arguments), &payload); err != nil {
-						msgs = append(msgs, openai.ToolMessage("failed to parse tool call arguments: "+err.Error(), call.ID))
-						break
-					}
-
-					var holidays []string
-					for _, event := range events {
-						date, err := event.GetAllDayStartAt()
-						if err != nil {
-							continue
-						}
-
-						if payload.MaxCount > 0 && len(holidays) >= payload.MaxCount {
-							break
-						}
-
-						if !payload.BeforeDate.IsZero() && date.After(payload.BeforeDate) {
-							continue
-						}
-
-						if !payload.AfterDate.IsZero() && date.Before(payload.AfterDate) {
-							continue
-						}
-
-						holidays = append(holidays, date.Format(time.DateOnly)+": "+event.GetProperty(ics.ComponentPropertySummary).Value)
-					}
-
-					msgs = append(msgs, openai.ToolMessage(strings.Join(holidays, "\n"), call.ID))
+					msgs = append(msgs, openai.ToolMessage(handleGetHolidays(ctx, call.Function.Arguments), call.ID))
 				default:
 					return "", errors.New("unknown tool call: " + call.Function.Name)
 				}

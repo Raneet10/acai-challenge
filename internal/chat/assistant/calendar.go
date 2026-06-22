@@ -2,11 +2,17 @@ package assistant
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
+	"os"
+	"strings"
+	"time"
 
 	"github.com/arran4/golang-ical"
 )
+
+const defaultHolidayCalendarLink = "https://www.officeholidays.com/ics/spain/catalonia"
 
 func LoadCalendar(ctx context.Context, link string) ([]*ics.VEvent, error) {
 	slog.InfoContext(ctx, "Loading calendar", "link", link)
@@ -17,4 +23,50 @@ func LoadCalendar(ctx context.Context, link string) ([]*ics.VEvent, error) {
 	}
 
 	return cal.Events(), nil
+}
+
+func handleGetHolidays(ctx context.Context, rawArgs string) string {
+	link := defaultHolidayCalendarLink
+	if v := os.Getenv("HOLIDAY_CALENDAR_LINK"); v != "" {
+		link = v
+	}
+
+	events, err := LoadCalendar(ctx, link)
+	if err != nil {
+		return "failed to load holiday events"
+	}
+
+	var args struct {
+		BeforeDate time.Time `json:"before_date,omitempty"`
+		AfterDate  time.Time `json:"after_date,omitempty"`
+		MaxCount   int       `json:"max_count,omitempty"`
+	}
+
+	if err := json.Unmarshal([]byte(rawArgs), &args); err != nil {
+		return "failed to parse tool call arguments: " + err.Error()
+	}
+
+	var holidays []string
+	for _, event := range events {
+		date, err := event.GetAllDayStartAt()
+		if err != nil {
+			continue
+		}
+
+		if args.MaxCount > 0 && len(holidays) >= args.MaxCount {
+			break
+		}
+
+		if !args.BeforeDate.IsZero() && date.After(args.BeforeDate) {
+			continue
+		}
+
+		if !args.AfterDate.IsZero() && date.Before(args.AfterDate) {
+			continue
+		}
+
+		holidays = append(holidays, date.Format(time.DateOnly)+": "+event.GetProperty(ics.ComponentPropertySummary).Value)
+	}
+
+	return strings.Join(holidays, "\n")
 }
