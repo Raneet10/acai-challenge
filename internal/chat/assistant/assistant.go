@@ -87,12 +87,25 @@ func (a *Assistant) Reply(ctx context.Context, conv *model.Conversation) (string
 			Tools: []openai.ChatCompletionToolUnionParam{
 				openai.ChatCompletionFunctionTool(openai.FunctionDefinitionParam{
 					Name:        "get_weather",
-					Description: openai.String("Get weather at the given location"),
+					Description: openai.String("Get the current weather conditions at the given location"),
 					Parameters: openai.FunctionParameters{
 						"type": "object",
 						"properties": map[string]any{
-							"location": map[string]string{
-								"type": "string",
+							"location": weatherLocationParam,
+						},
+						"required": []string{"location"},
+					},
+				}),
+				openai.ChatCompletionFunctionTool(openai.FunctionDefinitionParam{
+					Name:        "get_weather_forecast",
+					Description: openai.String("Get the multi-day weather forecast for the given location"),
+					Parameters: openai.FunctionParameters{
+						"type": "object",
+						"properties": map[string]any{
+							"location": weatherLocationParam,
+							"days": map[string]string{
+								"type":        "integer",
+								"description": "Number of forecast days to return, from 1 to 10. Defaults to 3 if not provided.",
 							},
 						},
 						"required": []string{"location"},
@@ -142,7 +155,9 @@ func (a *Assistant) Reply(ctx context.Context, conv *model.Conversation) (string
 
 				switch call.Function.Name {
 				case "get_weather":
-					msgs = append(msgs, openai.ToolMessage("weather is fine", call.ID))
+					msgs = append(msgs, openai.ToolMessage(handleGetWeather(ctx, call.Function.Arguments), call.ID))
+				case "get_weather_forecast":
+					msgs = append(msgs, openai.ToolMessage(handleGetWeatherForecast(ctx, call.Function.Arguments), call.ID))
 				case "get_today_date":
 					msgs = append(msgs, openai.ToolMessage(time.Now().Format(time.RFC3339), call.ID))
 				case "get_holidays":
