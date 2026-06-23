@@ -1,13 +1,16 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/acai-travel/tech-challenge/internal/chat"
 	"github.com/acai-travel/tech-challenge/internal/chat/assistant"
 	"github.com/acai-travel/tech-challenge/internal/chat/model"
+	"github.com/acai-travel/tech-challenge/internal/chat/tools"
 	"github.com/acai-travel/tech-challenge/internal/httpx"
 	"github.com/acai-travel/tech-challenge/internal/mongox"
 	"github.com/acai-travel/tech-challenge/internal/pb"
@@ -19,7 +22,13 @@ func main() {
 	mongo := mongox.MustConnect()
 
 	repo := model.New(mongo)
-	assist := assistant.New()
+
+	loadCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	registry := tools.Default()
+	tools.Load(loadCtx, registry)
+	cancel()
+
+	assist := assistant.New(registry)
 
 	server := chat.NewServer(repo, assist)
 

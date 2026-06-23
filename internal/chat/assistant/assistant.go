@@ -5,18 +5,19 @@ import (
 	"errors"
 	"log/slog"
 	"strings"
-	"time"
 
 	"github.com/acai-travel/tech-challenge/internal/chat/model"
+	"github.com/acai-travel/tech-challenge/internal/chat/tools"
 	"github.com/openai/openai-go/v2"
 )
 
 type Assistant struct {
-	cli openai.Client
+	cli   openai.Client
+	tools tools.Registry
 }
 
-func New() *Assistant {
-	return &Assistant{cli: openai.NewClient()}
+func New(registry tools.Registry) *Assistant {
+	return &Assistant{cli: openai.NewClient(), tools: registry}
 }
 
 func (a *Assistant) Title(ctx context.Context, conv *model.Conversation) (string, error) {
@@ -81,59 +82,7 @@ func (a *Assistant) Reply(ctx context.Context, conv *model.Conversation) (string
 		resp, err := a.cli.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
 			Model:    openai.ChatModelGPT4_1,
 			Messages: msgs,
-			Tools: []openai.ChatCompletionToolUnionParam{
-				openai.ChatCompletionFunctionTool(openai.FunctionDefinitionParam{
-					Name:        "get_weather",
-					Description: openai.String("Get the current weather conditions at the given location"),
-					Parameters: openai.FunctionParameters{
-						"type": "object",
-						"properties": map[string]any{
-							"location": weatherLocationParam,
-						},
-						"required": []string{"location"},
-					},
-				}),
-				openai.ChatCompletionFunctionTool(openai.FunctionDefinitionParam{
-					Name:        "get_weather_forecast",
-					Description: openai.String("Get the multi-day weather forecast for the given location"),
-					Parameters: openai.FunctionParameters{
-						"type": "object",
-						"properties": map[string]any{
-							"location": weatherLocationParam,
-							"days": map[string]string{
-								"type":        "integer",
-								"description": "Number of forecast days to return, from 1 to 10. Defaults to 3 if not provided.",
-							},
-						},
-						"required": []string{"location"},
-					},
-				}),
-				openai.ChatCompletionFunctionTool(openai.FunctionDefinitionParam{
-					Name:        "get_today_date",
-					Description: openai.String("Get today's date and time in RFC3339 format"),
-				}),
-				openai.ChatCompletionFunctionTool(openai.FunctionDefinitionParam{
-					Name:        "get_holidays",
-					Description: openai.String("Gets local bank and public holidays. Each line is a single holiday in the format 'YYYY-MM-DD: Holiday Name'."),
-					Parameters: openai.FunctionParameters{
-						"type": "object",
-						"properties": map[string]any{
-							"before_date": map[string]string{
-								"type":        "string",
-								"description": "Optional date in RFC3339 format to get holidays before this date. If not provided, all holidays will be returned.",
-							},
-							"after_date": map[string]string{
-								"type":        "string",
-								"description": "Optional date in RFC3339 format to get holidays after this date. If not provided, all holidays will be returned.",
-							},
-							"max_count": map[string]string{
-								"type":        "integer",
-								"description": "Optional maximum number of holidays to return. If not provided, all holidays will be returned.",
-							},
-						},
-					},
-				}),
-			},
+			Tools:    a.tools.Definitions(),
 		})
 
 		if err != nil {
@@ -150,18 +99,12 @@ func (a *Assistant) Reply(ctx context.Context, conv *model.Conversation) (string
 			for _, call := range message.ToolCalls {
 				slog.InfoContext(ctx, "Tool call received", "name", call.Function.Name, "args", call.Function.Arguments)
 
-				switch call.Function.Name {
-				case "get_weather":
-					msgs = append(msgs, openai.ToolMessage(handleGetWeather(ctx, call.Function.Arguments), call.ID))
-				case "get_weather_forecast":
-					msgs = append(msgs, openai.ToolMessage(handleGetWeatherForecast(ctx, call.Function.Arguments), call.ID))
-				case "get_today_date":
-					msgs = append(msgs, openai.ToolMessage(time.Now().Format(time.RFC3339), call.ID))
-				case "get_holidays":
-					msgs = append(msgs, openai.ToolMessage(handleGetHolidays(ctx, call.Function.Arguments), call.ID))
-				default:
+				t, ok := a.tools.Find(call.Function.Name)
+				if !ok {
 					return "", errors.New("unknown tool call: " + call.Function.Name)
 				}
+
+				msgs = append(msgs, openai.ToolMessage(t.Handler(ctx, call.Function.Arguments), call.ID))
 			}
 
 			continue

@@ -1,4 +1,4 @@
-package assistant
+package tools
 
 import (
 	"context"
@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/arran4/golang-ical"
@@ -25,15 +26,46 @@ func LoadCalendar(ctx context.Context, link string) ([]*ics.VEvent, error) {
 	return cal.Events(), nil
 }
 
-func handleGetHolidays(ctx context.Context, rawArgs string) string {
-	link := defaultHolidayCalendarLink
+func holidayCalendarLink() string {
 	if v := os.Getenv("HOLIDAY_CALENDAR_LINK"); v != "" {
-		link = v
+		return v
 	}
 
-	events, err := LoadCalendar(ctx, link)
+	return defaultHolidayCalendarLink
+}
+
+var (
+	holidayMu     sync.RWMutex
+	holidayEvents []*ics.VEvent
+)
+
+// loadHolidayCalendar fetches and caches the holiday calendar once. It's used
+// as holidaysTool's Init so the network fetch happens at startup instead of
+// on every get_holidays call.
+func loadHolidayCalendar(ctx context.Context) error {
+	events, err := LoadCalendar(ctx, holidayCalendarLink())
 	if err != nil {
-		return "failed to load holiday events"
+		return fmt.Errorf("failed to load holiday calendar: %w", err)
+	}
+
+	holidayMu.Lock()
+	holidayEvents = events
+	holidayMu.Unlock()
+
+	return nil
+}
+
+func handleGetHolidays(ctx context.Context, rawArgs string) string {
+	holidayMu.RLock()
+	events := holidayEvents
+	holidayMu.RUnlock()
+
+	if events == nil {
+		var err error
+		events, err = LoadCalendar(ctx, holidayCalendarLink())
+		if err != nil {
+			return "failed to load holiday events"
+		}
 	}
 
 	var args struct {
