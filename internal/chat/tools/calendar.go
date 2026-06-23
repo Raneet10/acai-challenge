@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"strings"
-	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/arran4/golang-ical"
@@ -34,10 +34,7 @@ func holidayCalendarLink() string {
 	return defaultHolidayCalendarLink
 }
 
-var (
-	holidayMu     sync.RWMutex
-	holidayEvents []*ics.VEvent
-)
+var holidayEvents atomic.Pointer[[]*ics.VEvent]
 
 // loadHolidayCalendar fetches and caches the holiday calendar once. It's used
 // as holidaysTool's Init so the network fetch happens at startup instead of
@@ -48,19 +45,16 @@ func loadHolidayCalendar(ctx context.Context) error {
 		return fmt.Errorf("failed to load holiday calendar: %w", err)
 	}
 
-	holidayMu.Lock()
-	holidayEvents = events
-	holidayMu.Unlock()
+	holidayEvents.Store(&events)
 
 	return nil
 }
 
 func handleGetHolidays(ctx context.Context, rawArgs string) string {
-	holidayMu.RLock()
-	events := holidayEvents
-	holidayMu.RUnlock()
-
-	if events == nil {
+	var events []*ics.VEvent
+	if cached := holidayEvents.Load(); cached != nil {
+		events = *cached
+	} else {
 		var err error
 		events, err = LoadCalendar(ctx, holidayCalendarLink())
 		if err != nil {
