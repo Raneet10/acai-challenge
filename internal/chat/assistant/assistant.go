@@ -9,15 +9,26 @@ import (
 	"github.com/acai-travel/tech-challenge/internal/chat/model"
 	"github.com/acai-travel/tech-challenge/internal/chat/tools"
 	"github.com/openai/openai-go/v2"
+	"github.com/openai/openai-go/v2/option"
 )
 
+//go:generate go tool mockgen -destination=mock_completions_test.go -package=assistant github.com/acai-travel/tech-challenge/internal/chat/assistant completionsAPI
+
+// completionsAPI is the subset of the OpenAI client used by Assistant. It's
+// satisfied by *openai.ChatCompletionService, and abstracted here so tests
+// can substitute a mock instead of calling the real OpenAI API.
+type completionsAPI interface {
+	New(ctx context.Context, body openai.ChatCompletionNewParams, opts ...option.RequestOption) (*openai.ChatCompletion, error)
+}
+
 type Assistant struct {
-	cli   openai.Client
-	tools tools.Registry
+	completions completionsAPI
+	tools       tools.Registry
 }
 
 func New(registry tools.Registry) *Assistant {
-	return &Assistant{cli: openai.NewClient(), tools: registry}
+	cli := openai.NewClient()
+	return &Assistant{completions: &cli.Chat.Completions, tools: registry}
 }
 
 func (a *Assistant) Title(ctx context.Context, conv *model.Conversation) (string, error) {
@@ -34,7 +45,7 @@ func (a *Assistant) Title(ctx context.Context, conv *model.Conversation) (string
 		msgs[i+1] = openai.UserMessage(m.Content)
 	}
 
-	resp, err := a.cli.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
+	resp, err := a.completions.New(ctx, openai.ChatCompletionNewParams{
 		Model:    openai.ChatModelO1,
 		Messages: msgs,
 	})
@@ -79,7 +90,7 @@ func (a *Assistant) Reply(ctx context.Context, conv *model.Conversation) (string
 	}
 
 	for i := 0; i < 15; i++ {
-		resp, err := a.cli.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
+		resp, err := a.completions.New(ctx, openai.ChatCompletionNewParams{
 			Model:    openai.ChatModelGPT4_1,
 			Messages: msgs,
 			Tools:    a.tools.Definitions(),
