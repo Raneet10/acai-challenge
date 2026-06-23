@@ -14,6 +14,8 @@ import (
 
 var _ pb.ChatService = (*Server)(nil)
 
+//go:generate go tool mockgen -destination=mock_assistant_test.go -package=chat github.com/acai-travel/tech-challenge/internal/chat Assistant
+
 type Assistant interface {
 	Title(ctx context.Context, conv *model.Conversation) (string, error)
 	Reply(ctx context.Context, conv *model.Conversation) (string, error)
