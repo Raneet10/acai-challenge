@@ -13,12 +13,16 @@ import (
 	"github.com/acai-travel/tech-challenge/internal/chat/tools"
 	"github.com/acai-travel/tech-challenge/internal/httpx"
 	"github.com/acai-travel/tech-challenge/internal/mongox"
+	"github.com/acai-travel/tech-challenge/internal/otelx"
 	"github.com/acai-travel/tech-challenge/internal/pb"
 	"github.com/gorilla/mux"
 	"github.com/twitchtv/twirp"
 )
 
 func main() {
+	otelx.MustSetupTracing("acai-chat-server")
+	metricsHandler := otelx.MustSetupMetrics()
+
 	mongo := mongox.MustConnect()
 
 	repo := model.New(mongo)
@@ -37,11 +41,15 @@ func main() {
 	handler.Use(
 		httpx.Logger(),
 		httpx.Recovery(),
+		httpx.Metrics(),
+		httpx.Tracing(),
 	)
 
 	handler.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		_, _ = fmt.Fprint(w, "Hi, my name is Clippy!")
 	})
+
+	handler.Handle("/metrics", metricsHandler)
 
 	handler.PathPrefix("/twirp/").Handler(pb.NewChatServiceServer(server, twirp.WithServerJSONSkipDefaults(true)))
 

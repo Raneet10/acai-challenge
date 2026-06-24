@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -92,20 +93,20 @@ func PlanItinerary(ctx context.Context, destination string, days int) (string, e
 	return b.String(), nil
 }
 
-func handlePlanItinerary(ctx context.Context, rawArgs string) string {
+func handlePlanItinerary(ctx context.Context, rawArgs string) (string, error) {
 	var args struct {
 		Destination string `json:"destination"`
 		Days        int    `json:"days,omitempty"`
 	}
 
 	if err := json.Unmarshal([]byte(rawArgs), &args); err != nil {
-		return "failed to parse tool call arguments: " + err.Error()
+		return "", errors.New("failed to parse tool call arguments: " + err.Error())
 	}
 
 	itinerary, err := PlanItinerary(ctx, args.Destination, args.Days)
 	if err != nil {
-		return "failed to plan itinerary: " + err.Error()
+		return "", errors.New("failed to plan itinerary: " + err.Error())
 	}
 
-	return itinerary
+	return itinerary, nil
 }

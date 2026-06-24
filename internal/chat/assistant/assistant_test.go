@@ -46,7 +46,7 @@ func TestAssistant_Title(t *testing.T) {
 		conv := &model.Conversation{Messages: []*model.Message{{Content: "What's the weather in Barcelona?"}}}
 
 		completions := NewMockcompletionsAPI(gomock.NewController(t))
-		completions.EXPECT().New(ctx, gomock.Any()).DoAndReturn(
+		completions.EXPECT().New(gomock.Any(), gomock.Any()).DoAndReturn(
 			func(_ context.Context, body openai.ChatCompletionNewParams, _ ...option.RequestOption) (*openai.ChatCompletion, error) {
 				if body.Model != openai.ChatModelO1 {
 					t.Errorf("Model = %q, want %q", body.Model, openai.ChatModelO1)
@@ -76,7 +76,7 @@ func TestAssistant_Title(t *testing.T) {
 		long := strings.Repeat("a", 100)
 
 		completions := NewMockcompletionsAPI(gomock.NewController(t))
-		completions.EXPECT().New(ctx, gomock.Any()).Return(
+		completions.EXPECT().New(gomock.Any(), gomock.Any()).Return(
 			mustChatCompletion(t, fmt.Sprintf(`{"choices":[{"message":{"role":"assistant","content":%q}}]}`, long)), nil)
 
 		a := &Assistant{completions: completions}
@@ -95,7 +95,7 @@ func TestAssistant_Title(t *testing.T) {
 		conv := &model.Conversation{Messages: []*model.Message{{Content: "Hello"}}}
 
 		completions := NewMockcompletionsAPI(gomock.NewController(t))
-		completions.EXPECT().New(ctx, gomock.Any()).Return(&openai.ChatCompletion{}, nil)
+		completions.EXPECT().New(gomock.Any(), gomock.Any()).Return(&openai.ChatCompletion{}, nil)
 
 		a := &Assistant{completions: completions}
 
@@ -108,7 +108,7 @@ func TestAssistant_Title(t *testing.T) {
 		conv := &model.Conversation{Messages: []*model.Message{{Content: "Hello"}}}
 
 		completions := NewMockcompletionsAPI(gomock.NewController(t))
-		completions.EXPECT().New(ctx, gomock.Any()).Return(nil, errors.New("openai is down"))
+		completions.EXPECT().New(gomock.Any(), gomock.Any()).Return(nil, errors.New("openai is down"))
 
 		a := &Assistant{completions: completions}
 
@@ -133,7 +133,7 @@ func TestAssistant_Reply(t *testing.T) {
 		conv := &model.Conversation{Messages: []*model.Message{{Role: model.RoleUser, Content: "Hello"}}}
 
 		completions := NewMockcompletionsAPI(gomock.NewController(t))
-		completions.EXPECT().New(ctx, gomock.Any()).Return(
+		completions.EXPECT().New(gomock.Any(), gomock.Any()).Return(
 			mustChatCompletion(t, `{"choices":[{"message":{"role":"assistant","content":"Hi there!"}}]}`), nil)
 
 		a := &Assistant{completions: completions}
@@ -154,9 +154,9 @@ func TestAssistant_Reply(t *testing.T) {
 		var gotArgs string
 		registry := tools.Registry{{
 			Name: "test_tool",
-			Handler: func(_ context.Context, rawArgs string) string {
+			Handler: func(_ context.Context, rawArgs string) (string, error) {
 				gotArgs = rawArgs
-				return "4"
+				return "4", nil
 			},
 		}}
 
@@ -164,8 +164,8 @@ func TestAssistant_Reply(t *testing.T) {
 		finalResp := mustChatCompletion(t, `{"choices":[{"message":{"role":"assistant","content":"It's 4."}}]}`)
 
 		completions := NewMockcompletionsAPI(gomock.NewController(t))
-		completions.EXPECT().New(ctx, gomock.Any()).Return(toolCallResp, nil)
-		completions.EXPECT().New(ctx, gomock.Any()).Return(finalResp, nil)
+		completions.EXPECT().New(gomock.Any(), gomock.Any()).Return(toolCallResp, nil)
+		completions.EXPECT().New(gomock.Any(), gomock.Any()).Return(finalResp, nil)
 
 		a := &Assistant{completions: completions, tools: registry}
 
@@ -189,7 +189,7 @@ func TestAssistant_Reply(t *testing.T) {
 		resp := mustChatCompletion(t, `{"choices":[{"message":{"role":"assistant","tool_calls":[{"id":"call_1","type":"function","function":{"name":"unknown_tool","arguments":"{}"}}]}}]}`)
 
 		completions := NewMockcompletionsAPI(gomock.NewController(t))
-		completions.EXPECT().New(ctx, gomock.Any()).Return(resp, nil)
+		completions.EXPECT().New(gomock.Any(), gomock.Any()).Return(resp, nil)
 
 		a := &Assistant{completions: completions}
 
@@ -203,13 +203,13 @@ func TestAssistant_Reply(t *testing.T) {
 
 		registry := tools.Registry{{
 			Name:    "loop_tool",
-			Handler: func(context.Context, string) string { return "ok" },
+			Handler: func(context.Context, string) (string, error) { return "ok", nil },
 		}}
 
 		resp := mustChatCompletion(t, `{"choices":[{"message":{"role":"assistant","tool_calls":[{"id":"call_1","type":"function","function":{"name":"loop_tool","arguments":"{}"}}]}}]}`)
 
 		completions := NewMockcompletionsAPI(gomock.NewController(t))
-		completions.EXPECT().New(ctx, gomock.Any()).Return(resp, nil).Times(15)
+		completions.EXPECT().New(gomock.Any(), gomock.Any()).Return(resp, nil).Times(15)
 
 		a := &Assistant{completions: completions, tools: registry}
 
@@ -222,7 +222,7 @@ func TestAssistant_Reply(t *testing.T) {
 		conv := &model.Conversation{Messages: []*model.Message{{Role: model.RoleUser, Content: "Hello"}}}
 
 		completions := NewMockcompletionsAPI(gomock.NewController(t))
-		completions.EXPECT().New(ctx, gomock.Any()).Return(&openai.ChatCompletion{}, nil)
+		completions.EXPECT().New(gomock.Any(), gomock.Any()).Return(&openai.ChatCompletion{}, nil)
 
 		a := &Assistant{completions: completions}
 
@@ -235,7 +235,7 @@ func TestAssistant_Reply(t *testing.T) {
 		conv := &model.Conversation{Messages: []*model.Message{{Role: model.RoleUser, Content: "Hello"}}}
 
 		completions := NewMockcompletionsAPI(gomock.NewController(t))
-		completions.EXPECT().New(ctx, gomock.Any()).Return(nil, errors.New("openai is down"))
+		completions.EXPECT().New(gomock.Any(), gomock.Any()).Return(nil, errors.New("openai is down"))
 
 		a := &Assistant{completions: completions}
 

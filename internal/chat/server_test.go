@@ -56,8 +56,8 @@ func TestServer_StartConversation(t *testing.T) {
 		)
 
 		assist := NewMockAssistant(gomock.NewController(t))
-		assist.EXPECT().Title(ctx, gomock.Any()).Return(wantTitle, nil)
-		assist.EXPECT().Reply(ctx, gomock.Any()).Return(wantReply, nil)
+		assist.EXPECT().Title(gomock.Any(), gomock.Any()).Return(wantTitle, nil)
+		assist.EXPECT().Reply(gomock.Any(), gomock.Any()).Return(wantReply, nil)
 
 		srv := NewServer(f.Repository, assist)
 
@@ -106,8 +106,8 @@ func TestServer_StartConversation(t *testing.T) {
 
 	t.Run("falls back to the default title when Title fails", WithFixture(func(t *testing.T, f *Fixture) {
 		assist := NewMockAssistant(gomock.NewController(t))
-		assist.EXPECT().Title(ctx, gomock.Any()).Return("", errors.New("boom"))
-		assist.EXPECT().Reply(ctx, gomock.Any()).Return("ok", nil)
+		assist.EXPECT().Title(gomock.Any(), gomock.Any()).Return("", errors.New("boom"))
+		assist.EXPECT().Reply(gomock.Any(), gomock.Any()).Return("ok", nil)
 
 		srv := NewServer(f.Repository, assist)
 
@@ -155,7 +155,7 @@ func TestServer_ContinueConversation(t *testing.T) {
 		)
 
 		assist := NewMockAssistant(gomock.NewController(t))
-		assist.EXPECT().Reply(ctx, gomock.Any()).DoAndReturn(func(_ context.Context, conv *model.Conversation) (string, error) {
+		assist.EXPECT().Reply(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, conv *model.Conversation) (string, error) {
 			if len(conv.Messages) != 2 {
 				t.Errorf("Reply() called with %d messages, want 2", len(conv.Messages))
 			}

@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -50,7 +51,7 @@ func loadHolidayCalendar(ctx context.Context) error {
 	return nil
 }
 
-func handleGetHolidays(ctx context.Context, rawArgs string) string {
+func handleGetHolidays(ctx context.Context, rawArgs string) (string, error) {
 	var events []*ics.VEvent
 	if cached := holidayEvents.Load(); cached != nil {
 		events = *cached
@@ -58,7 +59,7 @@ func handleGetHolidays(ctx context.Context, rawArgs string) string {
 		var err error
 		events, err = LoadCalendar(ctx, holidayCalendarLink())
 		if err != nil {
-			return "failed to load holiday events"
+			return "", errors.New("failed to load holiday events: " + err.Error())
 		}
 	}
 
@@ -69,7 +70,7 @@ func handleGetHolidays(ctx context.Context, rawArgs string) string {
 	}
 
 	if err := json.Unmarshal([]byte(rawArgs), &args); err != nil {
-		return "failed to parse tool call arguments: " + err.Error()
+		return "", errors.New("failed to parse tool call arguments: " + err.Error())
 	}
 
 	var holidays []string
@@ -94,5 +95,5 @@ func handleGetHolidays(ctx context.Context, rawArgs string) string {
 		holidays = append(holidays, date.Format(time.DateOnly)+": "+event.GetProperty(ics.ComponentPropertySummary).Value)
 	}
 
-	return strings.Join(holidays, "\n")
+	return strings.Join(holidays, "\n"), nil
 }

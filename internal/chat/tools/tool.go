@@ -14,7 +14,7 @@ type Tool struct {
 	Name        string
 	Description string
 	Parameters  openai.FunctionParameters // nil if the tool takes no arguments
-	Handler     func(ctx context.Context, rawArgs string) string
+	Handler     func(ctx context.Context, rawArgs string) (string, error)
 	// Init, if set, runs once, concurrently with other tools' Init funcs, when
 	// the registry is loaded (see Load). Tools without startup work leave this nil.
 	Init func(ctx context.Context) error

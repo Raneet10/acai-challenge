@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -150,37 +151,37 @@ func GetWeatherForecast(ctx context.Context, location string, days int) (string,
 	return strings.Join(lines, "\n"), nil
 }
 
-func handleGetWeather(ctx context.Context, rawArgs string) string {
+func handleGetWeather(ctx context.Context, rawArgs string) (string, error) {
 	var args struct {
 		Location string `json:"location"`
 	}
 
 	if err := json.Unmarshal([]byte(rawArgs), &args); err != nil {
-		return "failed to parse tool call arguments: " + err.Error()
+		return "", errors.New("failed to parse tool call arguments: " + err.Error())
 	}
 
 	weather, err := GetCurrentWeather(ctx, args.Location)
 	if err != nil {
-		return "failed to get weather: " + err.Error()
+		return "", errors.New("failed to get weather: " + err.Error())
 	}
 
-	return weather
+	return weather, nil
 }
 
-func handleGetWeatherForecast(ctx context.Context, rawArgs string) string {
+func handleGetWeatherForecast(ctx context.Context, rawArgs string) (string, error) {
 	var args struct {
 		Location string `json:"location"`
 		Days     int    `json:"days,omitempty"`
 	}
 
 	if err := json.Unmarshal([]byte(rawArgs), &args); err != nil {
-		return "failed to parse tool call arguments: " + err.Error()
+		return "", errors.New("failed to parse tool call arguments: " + err.Error())
 	}
 
 	forecast, err := GetWeatherForecast(ctx, args.Location, args.Days)
 	if err != nil {
-		return "failed to get weather forecast: " + err.Error()
+		return "", errors.New("failed to get weather forecast: " + err.Error())
 	}
 
-	return forecast
+	return forecast, nil
 }

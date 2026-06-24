@@ -5,11 +5,17 @@ import (
 	"errors"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/acai-travel/tech-challenge/internal/chat/model"
 	"github.com/acai-travel/tech-challenge/internal/chat/tools"
 	"github.com/openai/openai-go/v2"
 	"github.com/openai/openai-go/v2/option"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
 )
 
 //go:generate go tool mockgen -destination=mock_completions_test.go -package=assistant github.com/acai-travel/tech-challenge/internal/chat/assistant completionsAPI
@@ -19,6 +25,47 @@ import (
 // can substitute a mock instead of calling the real OpenAI API.
 type completionsAPI interface {
 	New(ctx context.Context, body openai.ChatCompletionNewParams, opts ...option.RequestOption) (*openai.ChatCompletion, error)
+}
+
+const instrumentationName = "github.com/acai-travel/tech-challenge/internal/chat/assistant"
+
+var tracer = otel.Tracer(instrumentationName)
+
+var (
+	operationDuration metric.Float64Histogram
+	operationErrors   metric.Int64Counter
+)
+
+func init() {
+	meter := otel.Meter(instrumentationName)
+
+	var err error
+
+	operationDuration, err = meter.Float64Histogram("assistant.operation.duration", metric.WithDescription("Duration of OpenAI calls and tool executions"), metric.WithUnit("s"))
+	if err != nil {
+		panic(err)
+	}
+
+	operationErrors, err = meter.Int64Counter("assistant.operation.errors", metric.WithDescription("Number of OpenAI calls that returned an error"))
+	if err != nil {
+		panic(err)
+	}
+}
+
+// finishOperation records the duration (and, on failure, the error) of a
+// traced operation, then ends its span. Call it right after the operation
+// completes, with the span and start time from tracer.Start.
+func finishOperation(ctx context.Context, span trace.Span, operation string, start time.Time, err error, extra ...attribute.KeyValue) {
+	attrs := metric.WithAttributes(append([]attribute.KeyValue{attribute.String("operation", operation)}, extra...)...)
+	operationDuration.Record(ctx, time.Since(start).Seconds(), attrs)
+
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		operationErrors.Add(ctx, 1, attrs)
+	}
+
+	span.End()
 }
 
 type Assistant struct {
@@ -45,10 +92,13 @@ func (a *Assistant) Title(ctx context.Context, conv *model.Conversation) (string
 		msgs[i+1] = openai.UserMessage(m.Content)
 	}
 
-	resp, err := a.completions.New(ctx, openai.ChatCompletionNewParams{
+	completionsCtx, completionsSpan := tracer.Start(ctx, "openai.chat.completions")
+	completionsStart := time.Now()
+	resp, err := a.completions.New(completionsCtx, openai.ChatCompletionNewParams{
 		Model:    openai.ChatModelO1,
 		Messages: msgs,
 	})
+	finishOperation(completionsCtx, completionsSpan, "openai.chat.completions", completionsStart, err, attribute.String("model", string(openai.ChatModelO1)))
 
 	if err != nil {
 		return "", err
@@ -90,11 +140,14 @@ func (a *Assistant) Reply(ctx context.Context, conv *model.Conversation) (string
 	}
 
 	for i := 0; i < 15; i++ {
-		resp, err := a.completions.New(ctx, openai.ChatCompletionNewParams{
+		completionsCtx, completionsSpan := tracer.Start(ctx, "openai.chat.completions")
+		completionsStart := time.Now()
+		resp, err := a.completions.New(completionsCtx, openai.ChatCompletionNewParams{
 			Model:    openai.ChatModelGPT4_1,
 			Messages: msgs,
 			Tools:    a.tools.Definitions(),
 		})
+		finishOperation(completionsCtx, completionsSpan, "openai.chat.completions", completionsStart, err, attribute.String("model", string(openai.ChatModelGPT4_1)))
 
 		if err != nil {
 			return "", err
@@ -115,7 +168,16 @@ func (a *Assistant) Reply(ctx context.Context, conv *model.Conversation) (string
 					return "", errors.New("unknown tool call: " + call.Function.Name)
 				}
 
-				msgs = append(msgs, openai.ToolMessage(t.Handler(ctx, call.Function.Arguments), call.ID))
+				toolCtx, toolSpan := tracer.Start(ctx, "tool.execution", trace.WithAttributes(attribute.String("tool", call.Function.Name)))
+				toolStart := time.Now()
+				result, toolErr := t.Handler(toolCtx, call.Function.Arguments)
+				finishOperation(toolCtx, toolSpan, "tool.execution", toolStart, toolErr, attribute.String("tool", call.Function.Name))
+
+				if toolErr != nil {
+					result = toolErr.Error()
+				}
+
+				msgs = append(msgs, openai.ToolMessage(result, call.ID))
 			}
 
 			continue
