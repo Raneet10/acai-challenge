@@ -33,7 +33,7 @@ func main() {
 		url = v
 	}
 
-	cli := pb.NewChatServiceJSONClient(url, http.DefaultClient)
+	cli := pb.NewChatServiceJSONClient(url, &http.Client{Timeout: 30 * time.Second})
 	ctx := context.Background()
 
 	switch os.Args[1] {
