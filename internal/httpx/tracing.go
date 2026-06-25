@@ -23,7 +23,7 @@ func Tracing() func(handler http.Handler) http.Handler {
 				attribute.String("http.route", r.URL.Path),
 			)
 
-			saw := &statusAwareResponseWriter{ResponseWriter: w}
+			saw := &statusAwareResponseWriter{ResponseWriter: w, status: http.StatusOK}
 
 			handler.ServeHTTP(saw, r.WithContext(ctx))
 

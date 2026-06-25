@@ -45,7 +45,7 @@ func init() {
 func Metrics() func(handler http.Handler) http.Handler {
 	return func(handler http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			saw := &statusAwareResponseWriter{ResponseWriter: w}
+			saw := &statusAwareResponseWriter{ResponseWriter: w, status: http.StatusOK}
 			start := time.Now()
 
 			requestsReceived.Add(r.Context(), 1, metric.WithAttributes(

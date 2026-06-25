@@ -18,7 +18,7 @@ func (w *statusAwareResponseWriter) WriteHeader(status int) {
 func Logger() func(handler http.Handler) http.Handler {
 	return func(handler http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			saw := &statusAwareResponseWriter{ResponseWriter: w}
+			saw := &statusAwareResponseWriter{ResponseWriter: w, status: http.StatusOK}
 
 			defer func() {
 				if saw.status/100 == 5 {
