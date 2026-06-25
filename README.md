@@ -36,7 +36,7 @@ Currently, the assistant can:
 We expect you to be able to navigate and figure out the codebase on your own, but here are some key takeaways to give 
 you a boost:
 
-- There is a `Makefile` with a few handy commands like `make up` and `make run`.
+- There is a `Makefile` with handy commands — see the [Makefile targets](#makefile-targets) section below.
 - The entry point to the application is in `cmd/server/main.go`, but the main logic lives in `internal/chat/server.go`.
 - The application stores conversations in a [MongoDB](https://www.mongodb.com/) database. There's a docker compose file 
   to start a local MongoDB instance.
@@ -102,6 +102,20 @@ You can find [CLI tool](cmd/cli/README.md) in `cmd/cli` to interact with the app
 We have created a [postman collection](https://documenter.getpostman.com/view/40257649/2sB3BKFo8S) for you to explore 
 the API. You can use [postman](https://www.postman.com/) or any other HTTP client.
 
+## Makefile targets
+
+| Target | Description |
+|--------|-------------|
+| `make up` | Start MongoDB via Docker Compose |
+| `make down` | Stop MongoDB |
+| `make run` | Run the server (`go run ./cmd/server`) |
+| `make build` | Compile all packages (`go build ./...`) |
+| `make fmt` | Format all Go source files (`gofmt -w .`) |
+| `make lint` | Run static analysis (`go vet ./...`) |
+| `make test` | Run the full test suite (`go test ./...`) |
+| `make mock` | Regenerate mock files with `mockgen` |
+| `make gen` | Regenerate protobuf / Twirp files with `protoc` |
+
 ## Testing
 
 The codebase includes tests for the server and the assistant. The tests require mongoDB to be running, so make sure
@@ -109,7 +123,7 @@ to start it with `make up` before running the tests.
 
 Run the tests using:
 ```bash
-go test ./...
+make test
 ```
 
 ## Tasks
