@@ -70,14 +70,6 @@ func main() {
 
 	go func() {
 		defer wg.Done()
-
-		go func() {
-			<-ctx.Done()
-			shutdownCtx, shutdownCancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
-			defer shutdownCancel()
-			_ = apiServer.Shutdown(shutdownCtx)
-		}()
-
 		slog.Info("Starting the server...")
 		if err := apiServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			panic(err)
@@ -86,14 +78,6 @@ func main() {
 
 	go func() {
 		defer wg.Done()
-
-		go func() {
-			<-ctx.Done()
-			shutdownCtx, shutdownCancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
-			defer shutdownCancel()
-			_ = debugServer.Shutdown(shutdownCtx)
-		}()
-
 		slog.Info("Starting internal debug server...")
 		if err := debugServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			panic(err)
@@ -103,11 +87,16 @@ func main() {
 	<-ctx.Done()
 	slog.Info("Shutting down...")
 
-	wg.Wait()
-
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 	defer shutdownCancel()
-	_ = shutdownTracing(shutdownCtx)
+	_ = apiServer.Shutdown(shutdownCtx)
+	_ = debugServer.Shutdown(shutdownCtx)
+
+	wg.Wait()
+
+	tracingCtx, tracingCancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+	defer tracingCancel()
+	_ = shutdownTracing(tracingCtx)
 
 	slog.Info("Shutdown complete")
 }
