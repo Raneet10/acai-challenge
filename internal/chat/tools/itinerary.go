@@ -40,7 +40,7 @@ func searchAttractions(ctx context.Context, destination string) ([]string, error
 		return nil, fmt.Errorf("failed to build Wikipedia API request: %w", err)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to call Wikipedia API: %w", err)
 	}

@@ -3,10 +3,14 @@ package tools
 import (
 	"context"
 	"log/slog"
+	"net/http"
 	"sync"
+	"time"
 
 	"github.com/openai/openai-go/v2"
 )
+
+var httpClient = &http.Client{Timeout: 10 * time.Second}
 
 // Tool bundles everything needed to expose a function-calling tool to OpenAI
 // and handle the model's calls to it.

@@ -75,7 +75,7 @@ func weatherAPIGet(ctx context.Context, path string, query url.Values) ([]byte, 
 		return nil, fmt.Errorf("failed to build weather API request: %w", err)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to call weather API: %w", err)
 	}
