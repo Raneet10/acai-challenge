@@ -209,7 +209,7 @@ func TestAssistant_Reply(t *testing.T) {
 		resp := mustChatCompletion(t, `{"choices":[{"message":{"role":"assistant","tool_calls":[{"id":"call_1","type":"function","function":{"name":"loop_tool","arguments":"{}"}}]}}]}`)
 
 		completions := NewMockcompletionsAPI(gomock.NewController(t))
-		completions.EXPECT().New(gomock.Any(), gomock.Any()).Return(resp, nil).Times(15)
+		completions.EXPECT().New(gomock.Any(), gomock.Any()).Return(resp, nil).Times(maxToolCallRounds)
 
 		a := &Assistant{completions: completions, tools: registry}
 

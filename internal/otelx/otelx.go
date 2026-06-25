@@ -14,6 +14,8 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.34.0"
 )
 
+var durationBucketsSeconds = []float64{0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60}
+
 // MustSetupMetrics configures the global MeterProvider with a Prometheus
 // exporter and returns the HTTP handler to serve scraped metrics from
 // (mount it at /metrics).
@@ -23,7 +25,12 @@ func MustSetupMetrics() http.Handler {
 		panic(err)
 	}
 
-	otel.SetMeterProvider(sdkmetric.NewMeterProvider(sdkmetric.WithReader(exporter)))
+	durationView := sdkmetric.NewView(
+		sdkmetric.Instrument{Kind: sdkmetric.InstrumentKindHistogram},
+		sdkmetric.Stream{Aggregation: sdkmetric.AggregationExplicitBucketHistogram{Boundaries: durationBucketsSeconds}},
+	)
+
+	otel.SetMeterProvider(sdkmetric.NewMeterProvider(sdkmetric.WithReader(exporter), sdkmetric.WithView(durationView)))
 
 	return promhttp.Handler()
 }

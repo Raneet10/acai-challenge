@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/acai-travel/tech-challenge/internal/chat/model"
@@ -95,24 +96,44 @@ func (s *Server) StartConversation(ctx context.Context, req *pb.StartConversatio
 		return nil, twirp.RequiredArgumentError("message")
 	}
 
-	// choose a title
-	titleCtx, titleSpan := tracer.Start(ctx, "assistant.Title")
-	titleStart := time.Now()
-	title, err := s.assist.Title(titleCtx, conversation)
-	finishOperation(titleCtx, titleSpan, "assistant.Title", titleStart, err)
-	if err != nil {
-		slog.ErrorContext(ctx, "Failed to generate conversation title", "error", err)
+	var (
+		title    string
+		titleErr error
+		reply    string
+		replyErr error
+	)
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+
+		titleCtx, titleSpan := tracer.Start(ctx, "assistant.Title")
+		titleStart := time.Now()
+		title, titleErr = s.assist.Title(titleCtx, conversation)
+		finishOperation(titleCtx, titleSpan, "assistant.Title", titleStart, titleErr)
+	}()
+
+	go func() {
+		defer wg.Done()
+
+		replyCtx, replySpan := tracer.Start(ctx, "assistant.Reply")
+		replyStart := time.Now()
+		reply, replyErr = s.assist.Reply(replyCtx, conversation)
+		finishOperation(replyCtx, replySpan, "assistant.Reply", replyStart, replyErr)
+	}()
+
+	wg.Wait()
+
+	if titleErr != nil {
+		slog.ErrorContext(ctx, "Failed to generate conversation title", "error", titleErr)
 	} else {
 		conversation.Title = title
 	}
 
-	// generate a reply
-	replyCtx, replySpan := tracer.Start(ctx, "assistant.Reply")
-	replyStart := time.Now()
-	reply, err := s.assist.Reply(replyCtx, conversation)
-	finishOperation(replyCtx, replySpan, "assistant.Reply", replyStart, err)
-	if err != nil {
-		return nil, err
+	if replyErr != nil {
+		return nil, replyErr
 	}
 
 	conversation.Messages = append(conversation.Messages, &model.Message{
@@ -125,7 +146,7 @@ func (s *Server) StartConversation(ctx context.Context, req *pb.StartConversatio
 
 	createCtx, createSpan := tracer.Start(ctx, "repo.CreateConversation")
 	createStart := time.Now()
-	err = s.repo.CreateConversation(createCtx, conversation)
+	err := s.repo.CreateConversation(createCtx, conversation)
 	finishOperation(createCtx, createSpan, "repo.CreateConversation", createStart, err)
 	if err != nil {
 		return nil, err

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"runtime"
 	"strings"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
+	"golang.org/x/sync/errgroup"
 )
 
 //go:generate go tool mockgen -destination=mock_completions_test.go -package=assistant github.com/acai-travel/tech-challenge/internal/chat/assistant completionsAPI
@@ -28,6 +30,10 @@ type completionsAPI interface {
 }
 
 const instrumentationName = "github.com/acai-travel/tech-challenge/internal/chat/assistant"
+
+const maxToolCallRounds = 15
+
+var maxConcurrentToolCalls = runtime.NumCPU()
 
 var tracer = otel.Tracer(instrumentationName)
 
@@ -139,7 +145,7 @@ func (a *Assistant) Reply(ctx context.Context, conv *model.Conversation) (string
 		}
 	}
 
-	for i := 0; i < 15; i++ {
+	for i := 0; i < maxToolCallRounds; i++ {
 		completionsCtx, completionsSpan := tracer.Start(ctx, "openai.chat.completions")
 		completionsStart := time.Now()
 		resp, err := a.completions.New(completionsCtx, openai.ChatCompletionNewParams{
@@ -160,25 +166,38 @@ func (a *Assistant) Reply(ctx context.Context, conv *model.Conversation) (string
 		if message := resp.Choices[0].Message; len(message.ToolCalls) > 0 {
 			msgs = append(msgs, message.ToParam())
 
-			for _, call := range message.ToolCalls {
-				slog.InfoContext(ctx, "Tool call received", "name", call.Function.Name, "args", call.Function.Arguments)
+			toolMsgs := make([]openai.ChatCompletionMessageParamUnion, len(message.ToolCalls))
 
-				t, ok := a.tools.Find(call.Function.Name)
-				if !ok {
-					return "", errors.New("unknown tool call: " + call.Function.Name)
-				}
+			var g errgroup.Group
+			g.SetLimit(maxConcurrentToolCalls)
+			for i, call := range message.ToolCalls {
+				g.Go(func() error {
+					slog.InfoContext(ctx, "Tool call received", "name", call.Function.Name, "args", call.Function.Arguments)
 
-				toolCtx, toolSpan := tracer.Start(ctx, "tool.execution", trace.WithAttributes(attribute.String("tool", call.Function.Name)))
-				toolStart := time.Now()
-				result, toolErr := t.Handler(toolCtx, call.Function.Arguments)
-				finishOperation(toolCtx, toolSpan, "tool.execution", toolStart, toolErr, attribute.String("tool", call.Function.Name))
+					t, ok := a.tools.Find(call.Function.Name)
+					if !ok {
+						return errors.New("unknown tool call: " + call.Function.Name)
+					}
 
-				if toolErr != nil {
-					result = toolErr.Error()
-				}
+					toolCtx, toolSpan := tracer.Start(ctx, "tool.execution", trace.WithAttributes(attribute.String("tool", call.Function.Name)))
+					toolStart := time.Now()
+					result, toolErr := t.Handler(toolCtx, call.Function.Arguments)
+					finishOperation(toolCtx, toolSpan, "tool.execution", toolStart, toolErr, attribute.String("tool", call.Function.Name))
 
-				msgs = append(msgs, openai.ToolMessage(result, call.ID))
+					if toolErr != nil {
+						result = toolErr.Error()
+					}
+
+					toolMsgs[i] = openai.ToolMessage(result, call.ID)
+					return nil
+				})
 			}
+
+			if err := g.Wait(); err != nil {
+				return "", err
+			}
+
+			msgs = append(msgs, toolMsgs...)
 
 			continue
 		}
